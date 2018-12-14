@@ -1,21 +1,52 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <GL/glut.h>
 #include <time.h>
+#include <math.h>
 
-static int x_coord = 5;
-static int moguce_x_prepreke[] = {3,5,7};
-static float x_prepreke = 5;
-static float z_prepreke = 20;
+#define timer_id1 0
+#define timer_id2 1
+#define PI 3.14
+
+
+static int x_coord = 3;
+static float y_coord = 1;
+static int possible_x[] = {1,2,3,4,5};
+static int possible_obs[] = {0,1,2};
 static int timer_active;
+static int timer_jump;
+static float x_planeA = 3;
+static float y_planeA = 0;
+static float z_planeA = 30;
+static float x_planeB = 3;
+static float y_planeB = 0;
+static float z_planeB = 60;
+static int game_start = 0;
 
-/*callback function declarations*/
+typedef struct{
+    float x,y,z;
+    int obst_type;
+} Prepreka;
+
+static Prepreka array_A[200];
+static int size_A = 0;
+static Prepreka array_B[200];
+static int size_B = 0;
+
 static void on_display(void);
 static void on_reshape(int width, int height);
 static void on_keyboard(unsigned char key, int x, int y);
-static void on_timer(int value);
+static void set_planeA();
+static void set_planeB();
+static void move_planes(int value);
+static void jump(int value);
+static float jump_positions[180];
+static int jump_count = 0;
+
 
 int main(int argc, char **argv) {
 
+    srand(time(NULL));
     /*GLUT init*/
     glutInit(&argc, argv);
         glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
@@ -27,6 +58,14 @@ int main(int argc, char **argv) {
         glutSetIconTitle("Free Runner");
 
     timer_active = 0;
+    timer_jump = 0;
+    int k = 0;
+    for(float i = 0;i <= 18;i+=0.1){
+        jump_positions[k] = 1.5*sin(i);
+        printf("jump_possition: %lf\n",jump_positions[k++]+1);
+    }
+    k = 0;
+
     /*callback function init*/
     glutDisplayFunc(on_display);
     glutReshapeFunc(on_reshape);
@@ -80,8 +119,7 @@ static void on_display(void)
     /* Podesava se vidna tacka. */
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    /*gluLookAt(5.0, 7.0, 5.0, 5.0, 5.0, 0.0, 0.0, 1.0, 0.0);*/
-    gluLookAt(5.0,7.0,-5.0,5.0,5.0,0.0,0.0,1.0,0.0);
+    gluLookAt(x_coord,7.0,-5.0,x_coord,5.0,0.0,0.0,1.0,0.0);
 
 
     /* Kreira se objekat. */
@@ -90,8 +128,18 @@ static void on_display(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
         glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
         glMaterialfv(GL_FRONT, GL_SHININESS, shine);
-        glTranslatef(x_coord, 1, -1);
+        glTranslatef(x_coord, y_coord, 0);
         glutSolidSphere(.5,40,40);
+    glPopMatrix();
+    
+    glPushMatrix();
+        glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, shine);
+        glTranslatef(x_planeA,y_planeA,z_planeA); 
+        glScalef(6,1,30);
+        glutSolidCube(1);
     glPopMatrix();
 
     glPushMatrix();
@@ -99,50 +147,46 @@ static void on_display(void)
         glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse1);
         glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular1);
         glMaterialfv(GL_FRONT, GL_SHININESS, shine1);
-        glTranslatef(5,0,14); 
-        glScalef(5,1,30);
+        glTranslatef(x_planeB,y_planeB,z_planeB); 
+        glScalef(6,1,30);
         glutSolidCube(1);
     glPopMatrix();
 
-    glPushMatrix();
-        glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
-        glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
-        glMaterialfv(GL_FRONT, GL_SHININESS, shine1);
-
-        glTranslatef(x_prepreke,2,z_prepreke);
-        glScalef(1,1,1);
-        glutSolidCube(1);
-    glPopMatrix();
-
-    /*iscrtavaje staze*/
-    glPushMatrix();
-        glLineWidth(3);
-
-        /*
-        glBegin(GL_POLYGON);
-            glVertex3f(1, 0, -2);
-            glVertex3f(9, 0, -2);
-            glVertex3f(9, 0, 50);
-            glVertex3f(1, 0, 50);
-        glEnd();
-        */
-        
-        glBegin(GL_POLYGON);
-            glVertex3f(0, 0, 1);
-            glVertex3f(0, 0, 9);
-            glVertex3f(-60, 0, 1);
-            glVertex3f(-60, 0, 9);
-        glEnd();
-        
-        glBegin(GL_POLYGON);
-            glVertex3f(10, 0, 1);
-            glVertex3f(10, 0, 9);
-            glVertex3f(60, 0, 1);
-            glVertex3f(60, 0, 9);
-        glEnd();
+    if(!game_start){
+        set_planeA();
+        set_planeB();
+    }
     
-    glPopMatrix();
+    for(int i = 0; i < size_A ; i++){
+        glPushMatrix();
+            glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient1);
+            glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse1);
+            glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular1);
+            glMaterialfv(GL_FRONT, GL_SHININESS, shine1);
+            glTranslatef(array_A[i].x,1,array_A[i].z);
+            switch(array_A[i].obst_type){
+            case 0: glutSolidCube(1);break;
+            case 1: glutSolidCone(.5,1,40,40);break;
+            case 2: glutSolidSphere(.5,40,40);break;
+        }
+        glPopMatrix();
+    }
+
+    for(int i = 0; i < size_B ; i++){
+        glPushMatrix();
+            glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient1);
+            glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse1);
+            glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular1);
+            glMaterialfv(GL_FRONT, GL_SHININESS, shine1);
+            glTranslatef(array_B[i].x,1,array_B[i].z);
+            switch(array_A[i].obst_type){
+            case 0: glutSolidCube(1);break;
+            case 1: glutSolidCone(.5,1,40,40);break;
+            case 2: glutSolidSphere(.5,40,40);break;
+        }
+        glPopMatrix();
+    }
+
 
     glBegin(GL_LINES);
         glColor3f(1,0,0);
@@ -186,8 +230,9 @@ static void on_keyboard(unsigned char key, int x, int y)
         
         case 'S':
         case 's':
+            game_start = 1;
             if(!timer_active){
-                glutTimerFunc(50,on_timer,0);
+                glutTimerFunc(50,move_planes,timer_id1);
                 timer_active = 1;
             };break;
         
@@ -195,38 +240,109 @@ static void on_keyboard(unsigned char key, int x, int y)
             timer_active = 0;break;
         case 'a':
         case 'A':
-            if(x_coord != 7){
-                x_coord += 2;
+            game_start = 1;
+            if(x_coord < 6){
+                x_coord += 1;
             }
                 glutPostRedisplay();
             break;
             
         case 'd':
         case 'D':
-            if(x_coord != 3){
-                x_coord -= 2;
+            game_start = 1;
+            if(x_coord > 0){
+                x_coord -= 1;
             }
                 glutPostRedisplay();
             break;
-        
+        case 'j':
+        case 'J':
+            if(!timer_jump){
+                glutTimerFunc(50,jump,timer_id2);
+                timer_jump = 1;
+            }
+            break;
     }
 }
 
-static void on_timer(int value)
+static void move_planes(int value)
 {
     if(value)
         return;
-    
-    /*TODO simulacija kretanja prepreka prema objektu koji predstavlja igraca*/
 
-    z_prepreke -= 1;
-    if(z_prepreke < 0){
-        z_prepreke = 20;
-        x_prepreke = moguce_x_prepreke[time(NULL) % 3];
+    z_planeA -= 0.2;
+    z_planeB -= 0.2;
+    for(int i = 0 ; i < size_A ; i++){
+        array_A[i].z -= 0.2;
     }
+    for(int i = 0 ; i < size_B ; i++){
+        array_B[i].z -= 0.2;
+    }
+    if(z_planeA + 15 < 0){
+        z_planeA = 45;
+        set_planeA();
+    }
+
+    if(z_planeB + 15 < 0){
+        z_planeB = 45;
+        set_planeB();
+    }
+
     glutPostRedisplay();
     if(timer_active) {
-        glutTimerFunc(50,on_timer,0);
+        glutTimerFunc(50,move_planes,0);
+    }
+}
+
+static void set_planeB()
+{
+    size_B = 0;
+    int num_obst = 0;
+    Prepreka p;
+
+    for(int i = 0 ; i < 30 ; i += 5){
+        num_obst = (rand() % 3 ) + 1;
+        for(int j = 0 ; j < num_obst ; j++){
+            p.obst_type = possible_obs[rand()%3];
+            p.x = possible_x[rand() % 5];
+            p.y = 0;
+            p.z = z_planeB + i - 14.5;
+            array_B[size_B++] = p;
+        }
+    }
+}
+
+static void set_planeA()
+{
+    size_A = 0;
+    
+    int num_obst = 0;
+    Prepreka p;
+    for(int i = 0 ; i < 30 ; i+=5){
+        num_obst = (rand() % 3) + 1;
+        for(int j = 0 ; j < num_obst ; j++){
+            p.obst_type = possible_obs[rand()%3];
+            p.x = possible_x[rand() % 5];
+            p.y = 0;
+            p.z = z_planeA + i - 14.5;
+            array_A[size_A++] = p;
+        }
+    }
+}
+
+static void jump(int value)
+{
+    if(value != timer_id2)
+        return;
+    
+    y_coord = 1 + jump_positions[jump_count++];
+    // printf("Y coord : %lf",y_coord);
+    if(jump_count < 32)
+        glutTimerFunc(30,jump,timer_id2);
+    else{
+        timer_jump = 0;
+        y_coord = 1;
+        jump_count = 0;
     }
 }
 
