@@ -7,12 +7,14 @@
 #define timer_id1 0
 #define timer_id2 1
 #define PI 3.14
+#define timer_id_spiral 2
+#define timer_id_hole 3
 
 static int x_coord = 3;
 static float y_coord = 1;
-static float z_coord = 1;
+static float z_coord = 0;
 static int possible_x[] = {1,2,3,4,5};
-static int possible_obs[] = {0,1,2};
+static int possible_obs[] = {0,1,2,3};
 static int timer_active;
 static int timer_jump;
 static float x_planeA = 3;
@@ -23,6 +25,11 @@ static float y_planeB = 0;
 static float z_planeB = 60;
 static int game_start = 0;
 static float angle_leg = 0;
+
+static float spiral_parameter = 0;
+static int spiral_animation = 0;
+static int hole_animation = 0;
+static float hole_parameter = 0;
 
 typedef struct{
     float x,y,z;
@@ -38,12 +45,19 @@ static void on_display(void);
 static void on_reshape(int width, int height);
 static void on_keyboard(unsigned char key, int x, int y);
 
+static void spiral_timer(int value);
 static void set_planeA();
 static void set_planeB();
 static void move_planes(int value);
 static void check_colision();
 static float distance(Prepreka p);
 static void draw_man();
+static void draw_spiral(float x_obst,float y_obst,float z_obst);
+static void draw_teleport(float x_obst,float y_obst,float z_obst);
+static void draw_hole(float x_obst,float y_obst,float z_obst);
+static void teleport();
+static void hole_timer(int value);
+
 
 static void jump(int value);
 static float jump_positions[180];
@@ -81,7 +95,7 @@ int main(int argc, char **argv) {
     glClearColor(0.7, 0.7, 0.7, 0);
     glEnable(GL_DEPTH_TEST);
 
-    GLfloat light_position[] = { 0, 5, 0, 0};
+    GLfloat light_position[] = { 5, 3, 5, 0};
     GLfloat light_ambient[] = { 0.1, 0.1, 0.1, 1 };
     GLfloat light_diffuse[] = { 0.7, 0.7, 0.7, 1 };
     GLfloat light_specular[] = { 0.1, 0.1, 0.1, 1 };
@@ -122,8 +136,8 @@ static void on_display(void)
     /* Podesava se vidna tacka. */
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    gluLookAt(x_coord,5.0,-7.0,
-                x_coord,3.0,0.0,
+    gluLookAt(x_coord,5,-7,
+                x_coord,y_coord,z_coord,
                 0.0,1.0,0.0);
 
     /* Kreira se objekat. */
@@ -138,7 +152,8 @@ static void on_display(void)
         glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse_red);
         draw_man();
     glPopMatrix();
-    
+
+
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse_gray);
 
     glPushMatrix();
@@ -161,8 +176,21 @@ static void on_display(void)
     for(int i = 0; i < size_A ; i++){
         glPushMatrix();
             glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse_yellow);
-            glTranslatef(array_A[i].x,1,array_A[i].z);
-            glutSolidCube(1);
+            Prepreka p = array_A[i];
+            if(p.obst_type == 1) {
+                glTranslatef(array_A[i].x,1,array_A[i].z);
+                glutSolidCube(1);
+            }
+            else if(p.obst_type == 0) {
+                draw_spiral(p.x, p.y, p.z);
+            }
+            else if(p.obst_type == 2){
+                draw_teleport(p.x,p.y,p.z);
+            }
+            else if(p.obst_type == 3){
+                draw_hole(p.x,p.y,p.z);
+            }
+            
         glPopMatrix();
     }
 
@@ -293,10 +321,11 @@ static void set_planeB()
     int num_obst = 0;
     Prepreka p;
 
-    for(int i = 0 ; i < 30 ; i += 5){
+    for(int i = 5 ; i < 30 ; i += 5){
         num_obst = (rand() % 3 ) + 1;
         for(int j = 0 ; j < num_obst ; j++){
-            p.obst_type = possible_obs[rand()%3];
+            p.obst_type = possible_obs[rand()%4];
+            // printf("%d",p.obst_type);
             p.x = possible_x[rand() % 5];
             p.y = 0;
             p.z = z_planeB + i - 14.5;
@@ -311,10 +340,11 @@ static void set_planeA()
     
     int num_obst = 0;
     Prepreka p;
-    for(int i = 0 ; i < 30 ; i+=5){
+    for(int i = 5 ; i < 30 ; i+=5){
         num_obst = (rand() % 3) + 1;
         for(int j = 0 ; j < num_obst ; j++){
-            p.obst_type = possible_obs[rand()%3];
+            p.obst_type = possible_obs[(int)rand()%4];
+            // printf("%d",p.obst_type);
             p.x = possible_x[rand() % 5];
             p.y = 0;
             p.z = z_planeA + i - 14.5;
@@ -346,7 +376,30 @@ static void check_colision()
             // printf("udaljenost: %f",distance(array_A[i]));
             //hardkodovano zbog greske u racunu
             if (distance(array_A[i]) <= 1.02){
-                printf("Udario sam %d\n", k);
+                switch(array_A[i].obst_type){
+                    case 0:
+                        // printf("SPIRALA\n");
+                        if(!spiral_animation){
+                            spiral_animation = 1;
+                            glutTimerFunc(20,spiral_timer,timer_id_spiral);
+                        }
+                    break;
+                    case 1:
+                        timer_active = 0;
+                        break;
+                    case 2:
+                        teleport();
+                    break;
+                    case 3:
+                        if(!hole_animation){
+                            hole_animation = 1;
+                            glutTimerFunc(20,hole_timer,timer_id_hole);
+                        }
+                    break;
+
+                }
+                // printf("Udario sam %d\n", k);
+                // timer_active = 0;
                 k++;
             }
         }
@@ -355,7 +408,30 @@ static void check_colision()
         for(int i = 0 ; i < size_B ; i++){
             //hardkodovano zbog greske u racunu
             if (distance(array_B[i]) <= 1.02){
-                printf("Udario sam %d\n", k);
+                // printf("Udario sam %d\n", k);
+                // timer_active = 0;
+                switch(array_A[i].obst_type){
+                    case 0:
+                        // printf("SPIRALA\n");
+                        if(!spiral_animation){
+                            spiral_animation = 1;
+                            glutTimerFunc(20,spiral_timer,timer_id_spiral);
+                        }
+                    break;
+                    case 1:
+                        timer_active = 0;
+                        break;
+                    case 2:
+                        teleport();
+                    break;
+                    case 3:
+                        if(!hole_animation){
+                            hole_animation = 1;
+                            glutTimerFunc(20,hole_timer,timer_id_hole);
+                        }
+                    break;
+
+                }
                 k++;
             }
         }
@@ -375,48 +451,159 @@ static float distance(Prepreka p)
 static void draw_man()
 {
     glPushMatrix();
-        glTranslatef(x_coord,y_coord+1.2,0);
+        glTranslatef(x_coord,y_coord+1.2,z_coord);
         glutSolidSphere(0.2,10,10);
     glPopMatrix();
     glPushMatrix();
-        glTranslatef(x_coord,y_coord+.6,0);
+        glTranslatef(x_coord,y_coord+.6,z_coord);
         glScalef(.5,.7,.3);
         glutSolidCube(1);
     glPopMatrix();
     glPushMatrix();
-        glTranslatef(x_coord+.15,y_coord+.1,0);
+        glTranslatef(x_coord+.15,y_coord+.1,z_coord);
         glScalef(.3,1.5,.3);
         glPushMatrix();
-            glRotatef(20*cos(angle_leg*PI/15),1,0,0);
+            glRotatef(20*sin(30*angle_leg*PI/180),1,0,0);
             glutSolidCube(.5);
         glPopMatrix();
     glPopMatrix();
     glPushMatrix();
-        glTranslatef(x_coord-.15,y_coord+.1,0);
+        glTranslatef(x_coord-.15,y_coord+.1,z_coord);
         //TODO stampaj MODELVIEW
         glScalef(.3,1.5,.1);
         glPushMatrix();
-            glRotatef(20*sin(angle_leg*PI/15),1,0,0);
+            glRotatef(20*cos(30*angle_leg*PI/180),1,0,0);
             glutSolidCube(.5);
         glPopMatrix();
     glPopMatrix();
+    // glPushMatrix();
+    //     glTranslatef(x_coord+.5,y_coord-1.3,5);
+    //     glRotatef(40,0,0,1);
+    //     glScalef(.1,.6,.05);
+    //     glPushMatrix();
+    //         glRotatef(20*cos(angle_leg*PI/15),1,0,0);
+    //         glutSolidCube(1);
+    //     glPopMatrix();
+    // glPopMatrix();
+    // glPushMatrix();
+    //     glTranslatef(x_coord-.5,y_coord-1.3,5);
+    //     glRotatef(-40,0,0,1);
+    //     glScalef(.1,.6,.05);
+    //     glPushMatrix();
+    //         glRotatef(20*sin(angle_leg*PI/15),1,0,0);
+    //         glutSolidCube(1);
+    //     glPopMatrix();
+    // glPopMatrix();
     glPushMatrix();
-        glTranslatef(x_coord+.5,y_coord-1.5,5);
-        glRotatef(40,0,0,1);
-        glScalef(.1,.6,.05);
+        glTranslatef(x_coord -.3,y_coord+.7,z_coord);
+        glRotatef(-20,0,0,1);
+        glScalef(.1,.4,.1);
         glPushMatrix();
-            glRotatef(20*cos(angle_leg*PI/15),1,0,0);
+            glRotatef(20*sin(15*angle_leg*PI/180),1,0,0);
             glutSolidCube(1);
         glPopMatrix();
     glPopMatrix();
     glPushMatrix();
-        glTranslatef(x_coord-.5,y_coord-1.5,5);
+        glTranslatef(x_coord +.3,y_coord+.7,z_coord);
+        glRotatef(20,0,0,1);
+        glScalef(.1,.4,.1);
+        glPushMatrix();
+            glRotatef(20*cos(15*angle_leg*PI/180),1,0,0);
+            glutSolidCube(1);
+        glPopMatrix();
+    glPopMatrix();
+}
 
-        glRotatef(-40,0,0,1);
-        glScalef(.1,.6,.05);
-        glPushMatrix();
-            glRotatef(20*sin(angle_leg*PI/15),1,0,0);
-            glutSolidCube(1);
-        glPopMatrix();
+static void draw_spiral(float x_obst,float y_obst,float z_obst)
+{
+    glPushMatrix();
+        glTranslatef(x_obst,y_obst,z_obst);
+        GLfloat x = 0,y=0.8,z=0,angle, r  = .0001;
+        glBegin(GL_LINE_STRIP);
+        glLineWidth(7);
+        for(angle = 0; angle < 1400; angle += 1)
+        {   
+            x = r * cos(angle * PI/180);
+            z = r * sin(angle * PI/180);
+            glVertex3f(x,y,z);
+            y+=0.0006;
+            r+= .0005;
+        }
+        glEnd();
     glPopMatrix();
+}
+
+static void spiral_timer(int value)
+{
+    if(value != timer_id_spiral)
+        return;
+    
+    spiral_parameter += 5;
+
+    if(spiral_parameter >=180){
+        spiral_parameter = 0;
+        spiral_animation = 0;
+    }
+
+    y_coord = 15*sin(spiral_parameter * PI/180)+1;
+
+    glutPostRedisplay();
+
+    if(spiral_animation)
+        glutTimerFunc(20,spiral_timer,timer_id_spiral);
+    
+}
+
+static void draw_teleport(float x_obst,float y_obst,float z_obst)
+{
+    glPushMatrix();
+        glTranslatef(x_obst,y_obst+1.5,z_obst);
+        glScalef(.6,1.2,0);
+        GLfloat x = 0,y=0.8,z=0,angle, r  = .0001;
+        glBegin(GL_LINE_STRIP);
+        glLineWidth(7);
+        for(angle = 0; angle < 1800; angle += 1)
+        {   
+            x = r * cos(angle * PI/180);
+            y = r * sin(angle * PI/180);
+            z=z_obst -.5;
+            glVertex3f(x,y,z);
+            
+            r+= .0005;
+        }
+        glEnd();
+    glPopMatrix();
+
+}
+static void teleport()
+{
+    x_coord = possible_x[(int)rand()%5+1];
+}
+
+static void hole_timer(int value)
+{
+    if(value != timer_id_hole)
+        return;
+
+    hole_parameter += 1;
+    if(hole_parameter > 90){
+        timer_active = 0;
+        hole_animation = 0;
+    }
+    y_coord = -15*sin(hole_parameter * PI/180);
+
+    glutPostRedisplay();
+    if(hole_animation)
+        glutTimerFunc(20,hole_timer,timer_id_hole);
+
+}
+static void draw_hole(float x_obst,float y_obst,float z_obst)
+{
+    glDisable(GL_LIGHTING);
+    glColor3f(0,0,0);
+    glPushMatrix();
+        glTranslatef(x_obst,y_obst+.1,z_obst);
+        glutSolidCube(1);
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
 }
