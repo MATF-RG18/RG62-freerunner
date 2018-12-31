@@ -43,7 +43,6 @@ static float x_coord = 3;
 static float y_coord = 1;
 static float z_coord = 0;
 
-
 static int possible_x[] = {1,2,3,4,5};
 static int possible_obs[] = {0,1,2,3,4,5,6};
 
@@ -66,6 +65,7 @@ static float y_planeB = 0;
 static float z_planeB = 40;
 
 //pomocne promenljive
+static int game_end = 0;
 static int game_start = 0;
 static int imune = 0;
 static int have_hammer = 0;
@@ -340,7 +340,7 @@ static void on_display(void)
             
             glTexCoord2f(first,second);
             first = (first + 1) % 2;
-            glVertex3f(0,1.03,right_side_up_z-15+i);
+            glVertex3f(1,1.03,right_side_up_z-15+i);
 
             glTexCoord2f(first,second);
             first = (first + 1) % 2;
@@ -352,7 +352,7 @@ static void on_display(void)
 
         glDisable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D,0);
-        glTranslatef(right_side_up_x,right_side_up_y,right_side_up_z); 
+        glTranslatef(right_side_up_x+1,right_side_up_y,right_side_up_z); 
         glScalef(20,2,30);
         glutSolidCube(1);
     glPopMatrix();
@@ -368,7 +368,7 @@ static void on_display(void)
             
             glTexCoord2f(first,second);
             first = (first + 1) % 2;
-            glVertex3f(0,1.03,right_side_down_z-15+i);
+            glVertex3f(1,1.03,right_side_down_z-15+i);
 
             glTexCoord2f(first,second);
             first = (first + 1) % 2;
@@ -380,7 +380,7 @@ static void on_display(void)
 
         glDisable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D,0);
-        glTranslatef(right_side_down_x,right_side_down_y,right_side_down_z); 
+        glTranslatef(right_side_down_x+1,right_side_down_y,right_side_down_z); 
         glScalef(20,2,30);
         glutSolidCube(1);
     glPopMatrix();
@@ -548,9 +548,11 @@ static void on_keyboard(unsigned char key, int x, int y)
         case 'S':
         case 's':
             game_start = 1;
-            if(!timer_active){
-                glutTimerFunc(50,move_planes,timer_id1);
-                timer_active = 1;
+            if(!game_end){
+                if(!timer_active){
+                    glutTimerFunc(50,move_planes,timer_id1);
+                    timer_active = 1;
+                }
             };break;
     //pauzira se igra
         case 'p':
@@ -596,7 +598,7 @@ static void move_planes(int value)
     if(possible_moves[0] && x_coord < 5.5){
         x_coord += 0.1;
     }
-    if(possible_moves[1] && x_coord > 0.5){
+    if(possible_moves[1] && x_coord > 1.5){
         x_coord -= 0.1;
     }
     
@@ -776,6 +778,7 @@ static void check_colision()
                             array_A[i].to_remove = 1;
                             return;
                         }
+                        game_end = 1;
                         timer_active = 0;
                         break;
                     case 2:
@@ -784,6 +787,7 @@ static void check_colision()
                     break;
                     case 3:
                         if(!hole_animation){
+                            game_end = 1;
                             hole_animation = 1;
                             glutTimerFunc(20,hole_timer,timer_id_hole);
                         }
@@ -817,6 +821,7 @@ static void check_colision()
                             array_B[i].to_remove = 1;
                             return;
                         }
+                        game_end = 1;
                         timer_active = 0;
                         break;
                     case 2:
@@ -825,6 +830,7 @@ static void check_colision()
                     break;
                     case 3:
                         if(!hole_animation){
+                            game_end = 1;
                             hole_animation = 1;
                             glutTimerFunc(20,hole_timer,timer_id_hole);
                         }
